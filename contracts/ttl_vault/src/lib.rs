@@ -10,6 +10,16 @@ pub struct TtlVaultContract;
 
 #[contractimpl]
 impl TtlVaultContract {
+    /// One-time initializer — stores the token address used for all transfers.
+    pub fn initialize(env: Env, token_address: Address) {
+        assert!(
+            !env.storage().instance().has(&DataKey::TokenAddress),
+            "already initialized"
+        );
+        env.storage()
+            .instance()
+            .set(&DataKey::TokenAddress, &token_address);
+    }
     /// Create a new vault. Returns the vault ID.
     pub fn create_vault(
         env: Env,
@@ -76,7 +86,7 @@ impl TtlVaultContract {
             "vault already released"
         );
 
-        let xlm = token::Client::new(&env, &env.current_contract_address());
+        let xlm = token::Client::new(&env, &Self::load_token(&env));
         xlm.transfer(&from, &env.current_contract_address(), &amount);
 
         vault.balance += amount;
@@ -96,7 +106,7 @@ impl TtlVaultContract {
         );
         assert!(vault.balance >= amount, "insufficient balance");
 
-        let xlm = token::Client::new(&env, &env.current_contract_address());
+        let xlm = token::Client::new(&env, &Self::load_token(&env));
         xlm.transfer(&env.current_contract_address(), &vault.owner, &amount);
 
         vault.balance -= amount;
@@ -116,7 +126,7 @@ impl TtlVaultContract {
         assert!(Self::is_expired(&env, vault_id), "vault not yet expired");
 
         if vault.balance > 0 {
-            let xlm = token::Client::new(&env, &env.current_contract_address());
+            let xlm = token::Client::new(&env, &Self::load_token(&env));
             xlm.transfer(
                 &env.current_contract_address(),
                 &vault.beneficiary,
@@ -163,6 +173,13 @@ impl TtlVaultContract {
     }
 
     // --- helpers ---
+
+    fn load_token(env: &Env) -> Address {
+        env.storage()
+            .instance()
+            .get(&DataKey::TokenAddress)
+            .expect("not initialized")
+    }
 
     fn load_vault(env: &Env, vault_id: u64) -> Vault {
         env.storage()

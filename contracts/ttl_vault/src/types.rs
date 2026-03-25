@@ -12,6 +12,7 @@ pub enum ContractError {
 pub enum DataKey {
     Vault(u64),
     VaultCount,
+    TokenAddress,
 }
 
 #[contracttype]
