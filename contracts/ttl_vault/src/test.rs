@@ -2,7 +2,7 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger, storage::Instance},
+    testutils::{Address as _, Ledger, storage::Instance, storage::Persistent},
     Address, Env,
 };
 use types::VaultError;
@@ -13,6 +13,46 @@ fn setup() -> (Env, Address, Address) {
     let owner = Address::generate(&env);
     let beneficiary = Address::generate(&env);
     (env, owner, beneficiary)
+}
+
+#[test]
+fn test_create_vault_extends_vault_ttl() {
+    let (env, owner, beneficiary) = setup();
+    let contract_id = env.register_contract(None, TtlVaultContract);
+    let client = TtlVaultContractClient::new(&env, &contract_id);
+
+    let vault_id = client.create_vault(&owner, &beneficiary, &86400u64);
+
+    let ttl = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .get_ttl(&DataKey::Vault(vault_id))
+    });
+    assert!(
+        ttl >= VAULT_TTL_THRESHOLD,
+        "vault TTL {ttl} is below threshold {VAULT_TTL_THRESHOLD}"
+    );
+}
+
+#[test]
+fn test_check_in_extends_vault_ttl() {
+    let (env, owner, beneficiary) = setup();
+    let contract_id = env.register_contract(None, TtlVaultContract);
+    let client = TtlVaultContractClient::new(&env, &contract_id);
+
+    let vault_id = client.create_vault(&owner, &beneficiary, &86400u64);
+    env.ledger().with_mut(|l| l.sequence_number += 1000);
+    client.check_in(&vault_id, &owner);
+
+    let ttl = env.as_contract(&contract_id, || {
+        env.storage()
+            .persistent()
+            .get_ttl(&DataKey::Vault(vault_id))
+    });
+    assert!(
+        ttl >= VAULT_TTL_THRESHOLD,
+        "vault TTL {ttl} is below threshold after check_in"
+    );
 }
 
 #[test]
