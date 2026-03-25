@@ -3,7 +3,7 @@ use soroban_sdk::{contract, contractimpl, token, Address, Env};
 mod test;
 
 mod types;
-use types::{DataKey, ReleaseStatus, Vault};
+use types::{DataKey, ReleaseEvent, ReleaseStatus, Vault, RELEASE_TOPIC};
 
 #[contract]
 pub struct TtlVaultContract;
@@ -120,11 +120,22 @@ impl TtlVaultContract {
             );
         }
 
+        let released_amount = vault.balance;
+
         vault.balance = 0;
         vault.status = ReleaseStatus::Released;
         env.storage()
             .persistent()
             .set(&DataKey::Vault(vault_id), &vault);
+
+        env.events().publish(
+            (RELEASE_TOPIC,),
+            ReleaseEvent {
+                vault_id,
+                beneficiary: vault.beneficiary,
+                amount: released_amount,
+            },
+        );
     }
 
     /// Returns true if the check-in window has passed.

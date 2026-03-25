@@ -2,9 +2,10 @@
 
 use super::*;
 use soroban_sdk::{
-    testutils::{Address as _, Ledger},
-    Address, Env,
+    testutils::{Address as _, Events, Ledger},
+    vec, Address, Env, IntoVal,
 };
+use types::{ReleaseEvent, RELEASE_TOPIC};
 
 fn setup() -> (Env, Address, Address) {
     let env = Env::default();
@@ -77,4 +78,30 @@ fn test_update_beneficiary() {
 
     let vault = client.get_vault(&vault_id);
     assert_eq!(vault.beneficiary, new_beneficiary);
+}
+
+#[test]
+fn test_trigger_release_emits_event() {
+    let (env, owner, beneficiary) = setup();
+    let contract_id = env.register_contract(None, TtlVaultContract);
+    let client = TtlVaultContractClient::new(&env, &contract_id);
+
+    let vault_id = client.create_vault(&owner, &beneficiary, &86400u64);
+
+    // Advance past the check-in interval
+    env.ledger().with_mut(|l| l.timestamp += 90000);
+
+    client.trigger_release(&vault_id);
+
+    let events = env.events().all();
+    assert_eq!(events.len(), 1);
+
+    let (emitted_contract, topics, data) = events.get(0).unwrap();
+    assert_eq!(emitted_contract, contract_id);
+    assert_eq!(topics, vec![&env, RELEASE_TOPIC.into_val(&env)]);
+
+    let event: ReleaseEvent = data.into_val(&env);
+    assert_eq!(event.vault_id, vault_id);
+    assert_eq!(event.beneficiary, beneficiary);
+    assert_eq!(event.amount, 0); // no deposit was made
 }
